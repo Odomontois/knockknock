@@ -1,14 +1,12 @@
 package meetup.graphs
-
 import meetup.control.Search
 import meetup.graphs.console._
+import shapeless.labelled.{FieldType, field}
 import shapeless._
-import shapeless.labelled._
-import shapeless.syntax._
 
 import scala.io.StdIn
 
-object program2 extends App {
+object program3 extends App {
   trait |*|[x] {
     self =>
     type Input
@@ -34,24 +32,17 @@ object program2 extends App {
     override def outputName(name: String): interpret[x, I, O] = copy(output = Some(name))
   }
 
-  trait Constr {
-    type F[O]
+
+  type |**|[x, I, O] = |*|[x] {
+    type Input = I
+    type Output = O
   }
-  trait |**|[x, I] extends Constr {
-    type F[O] = |*|[x] {type Input = I; type Output = O}
-  }
 
-
-  type #>[C <: Constr, O] = C#F[O]
-
-  implicit def readLineProg: readLine |**| Unit #> String =
+  implicit def readLineProg: |**|[readLine, Unit, String] =
     interpret((name, _) => _ => StdIn.readLine(s"input ${name.getOrElse("something")}:\n"))
 
-  implicit def putLineProg: putLine |**| String #> Unit =
+  implicit def putLineProg: |**|[putLine, String , Unit] =
     interpret((_, name) => value => println(s"[${name.getOrElse("???")}] $value"))
-
-  implicit def consProg[x, y, A, B, C](implicit x: x |**| A #> B, y: y |**| B #> C): (x >> y) |**| A #> C =
-    interpret((_, _) => input => y.run(x.run(input)))
 
   type Program1 = readLine >> putLine
 
@@ -59,27 +50,27 @@ object program2 extends App {
 
 
   implicit def nameOutputProg[x, Vars <: HList, name <: String, Out]
-  (implicit x: x |**| Unit #> Out,
+  (implicit x: |**|[x,  Unit , Out],
    update: ops.record.Updater[Vars, FieldType[name, Out]],
-   w: Witness.Aux[name]): (x -> name) |**| Vars #> update.Out =
+   w: Witness.Aux[name]):  |**|[(x -> name), Vars , update.Out] =
     interpret((_, _) => vars => update(vars, field[name](x.inputName(w.value).run(()))))
 
   implicit def nameInputProg[x, name <: String, In, Vars <: HList]
-  (implicit x: x |**| In #> Unit,
+  (implicit x: |**|[x,  In, Unit],
    select: ops.record.Selector.Aux[Vars, name, In],
-   w: Witness.Aux[name]): (name -> x) |**| Vars #> Vars =
+   w: Witness.Aux[name]):  |**|[name -> x, Vars , Vars] =
     interpret((_, _) => vars => {
       x.outputName(w.value).run(select(vars)); vars
     })
 
   case class exec[prog]()
 
-  implicit def execProg[prog, Out](implicit prog: prog |**| HNil #> Out): exec[prog] |**| Unit #> Unit =
+  implicit def execProg[prog, Out](implicit prog: |**|[prog , HNil, Out]):  |**|[exec[prog],  Unit , Unit] =
     interpret((_, _) => _ => prog.run(HNil))
 
   type Program2 = exec[readLine -> "name"]
 
-//    the[|*|[Program2] ].run(())
+  //    the[|*|[Program2] ].run(())
 
   type Program3 = exec[
     (readLine -> "name") >>
@@ -88,9 +79,23 @@ object program2 extends App {
     ("age" -> putLine)
   ]
 
-    the[|*|[Program3]].run(())
+
 
 
   case class rename()
 
+
+  implicit def consProgSearch[x, y, A, B, C, Rx[+a] <: Search.Result[a], Ry[+a] <: Search.Result[a]]
+  (implicit xs: Search.Aux[|**|[x, A, B], Rx],
+   ys: Search.Aux[|**|[y, B, C], Ry],
+   combo: Search.Mapping2[Rx, Ry]): Search.Aux[|**|[x >> y, A, C], combo.Out] =
+    Search.instance[combo.Out,|**|[x >> y, A, C]](combo(xs.result, ys.result)((x, y) => interpret[x >> y, A, C]((_, _) => input => y.run(x.run(input)))))
+
+
+
+  the[Search[|*|[readLine >> putLine]]].result.value
+
+
+//  consProgSearch[readLine, putLine, Unit, String, Unit, Search.Found, Search.Found] : Search[|*|[readLine >> putLine]]
 }
+

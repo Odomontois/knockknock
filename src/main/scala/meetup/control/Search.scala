@@ -1,84 +1,86 @@
 package meetup.control
 
+import meetup.control.Search.{Aux, Found, NotFound, Result}
 import shapeless._
 import shapeless.ops.hlist.Prepend
 
-sealed trait Search[A] {
-  type Self <: Search[A]
-  def self: Self
-  def get(implicit ev: Self =:= Found[A]): A = self.a
-}
 
-case class Found[A](a: A) extends Search[A] {
-  type Self = Found[A]
-  def self = this
-}
-case class NotFound[A, Missing <: HList]() extends Search[A] {
-  type Self = NotFound[A, Missing]
-  def self = this
+trait Search[+A] {
+  type Out[+a] <: Result[a]
+  def result: Out[A]
 }
 
 
 trait UnhappySearch {
-  implicit def searchNotFound[A]: NotFound[A, A :: HNil] = NotFound()
+  implicit def searchNotFound[A](implicit lowPriority: LowPriority): Aux[A, NotFound[A :: HNil, ?]] = Search.instance(NotFound())
 }
 
-object Search {
-  type Aux[A, S] = Search[A] {type Self = S}
-  def apply[A](implicit search: Search[A]): Aux[A, search.Self] = search
+object Search extends UnhappySearch {
+  trait !!![X] {
+    def value[A]: A
+  }
 
-  implicit def searchFound[A](implicit instance: A): Found[A] = Found(instance)
+  sealed trait Result[+A]
+  case class Found[+A](value: A) extends Result[A]
+  case class NotFound[Missing <: HList, +A]() extends Result[A] {
+    def value(implicit missing: !!![Missing]): A = missing.value[A]
+  }
 
-  trait Mapping[A, B, S <: Search[A]] {
-    type Out
-    def apply(s: S, f: A => B): Out
+  type Aux[+A, O[+a] <: Result[a]] = Search[A] {type Out[a] = O[a]}
+  def apply[A](implicit search: Search[A]): Aux[A, search.Out] = search
+
+  def instance[R[+a] <: Result[a], A](x: R[A]): Aux[A, R] = new Search[A] {
+    override type Out[+a] = R[a]
+    override def result: R[A] = x
+  }
+
+  implicit def searchFound[A](implicit a: A): Aux[A, Found] = instance(Found(a))
+
+  trait Mapping[R[x] <: Result[x]] {
+    def apply[A, B](s: R[A])(f: A => B): R[B]
   }
 
   object Mapping {
-    type Aux[A, B, S <: Search[A], O] = Mapping[A, B, S] {type Out = O}
-
-    implicit def mappingFound[A, B]: Aux[A, B, Found[A], Found[B]] = new Mapping[A, B, Found[A]] {
-      type Out = Found[B]
-      override def apply(s: Found[A], f: A => B): Out = Found(f(s.a))
+    implicit def mappingFound: Mapping[Found] = new Mapping[Found] {
+      override def apply[A, B](s: Found[A])(f: A => B): Found[B] = Found(f(s.value))
     }
 
-    implicit def mappingNotFound[A, B, M <: HList]: Aux[A, B, NotFound[A, M], NotFound[B, M]] = new Mapping[A, B, NotFound[A, M]] {
-      type Out = NotFound[B, M]
-      override def apply(s: NotFound[A, M], f: A => B): NotFound[B, M] = NotFound[B, M]()
+    implicit def mappingNotFound[M <: HList]: Mapping[NotFound[M, ?]] = new Mapping[NotFound[M, ?]] {
+      override def apply[A, B](s: NotFound[M, A])(f: A => B): NotFound[M, B] = NotFound[M, B]()
     }
   }
 
-  trait Mapping2[A, B, C, SA <: Search[A], SB <: Search[B]] {
-    type Out
-    def apply(sa: SA, sb: SB, f: (A, B) => C): Out
+  trait Mapping2[R[x] <: Result[x], U[x] <: Result[x]] {
+    type Out[+C] <: Result[C]
+    def apply[A, B, C](r: R[A], u: U[B])(f: (A, B) => C): Out[C]
   }
 
   object Mapping2 {
-    type Aux[A, B, C, SA <: Search[A], SB <: Search[B], O] = Mapping2[A, B, C, SA, SB] {type Out = O}
+    type Aux[R[+x] <: Result[x], U[+x] <: Result[x], O[+x] <: Result[x]] = Mapping2[R, U] {type Out[+C] = O[C]}
 
 
-    implicit def bothFound[A, B, C]: Aux[A, B, C, Found[A], Found[B], Found[C]] =
-      new Mapping2[A, B, C, Found[A], Found[B]] {
-        type Out = Found[C]
-        def apply(sa: Found[A], sb: Found[B], f: (A, B) => C) = Found(f(sa.a, sb.a))
+    implicit def bothFound: Aux[Found, Found, Found] =
+      new Mapping2[Found, Found] {
+        type Out[+C] = Found[C]
+        def apply[A, B, C](sa: Found[A], sb: Found[B])(f: (A, B) => C): Found[C] = Found(f(sa.value, sb.value))
       }
 
-    implicit def leftFound[A, B, C, M <: HList]: Aux[A, B, C, Found[A], NotFound[B, M], NotFound[C, M]] =
-      new Mapping2[A, B, C, Found[A], NotFound[B, M]] {
-        type Out = NotFound[C, M]
-        override def apply(sa: Found[A], sb: NotFound[B, M], f: (A, B) => C): NotFound[C, M] = NotFound[C, M]()
+    implicit def leftFound[M <: HList]: Aux[Found, NotFound[M, +?], NotFound[M, +?]] =
+      new Mapping2[Found, NotFound[M, ?]] {
+        type Out[+C] = NotFound[M, C]
+        override def apply[A, B, C](sa: Found[A], sb: NotFound[M, B])(f: (A, B) => C): NotFound[M, C] = NotFound[M, C]()
       }
 
-    implicit def rightFound[A, B, C, M <: HList]: Aux[A, B, C, NotFound[A, M], Found[B], NotFound[C, M]] =
-      new Mapping2[A, B, C, NotFound[A, M], Found[B]] {
-        type Out = NotFound[C, M]
-        override def apply(sa: NotFound[A, M], sb: Found[B], f: (A, B) => C): NotFound[C, M] = NotFound[C, M]()
+    implicit def rightFound[M <: HList]: Aux[NotFound[M, +?], Found, NotFound[M, +?]] =
+      new Mapping2[NotFound[M, ?], Found] {
+        type Out[+C] = NotFound[M, C]
+        override def apply[A, B, C](sa: NotFound[M, A], sb: Found[B])(f: (A, B) => C): NotFound[M, C] = NotFound[M, C]()
       }
 
-    implicit def nothingFound[A, B, C, MA <: HList, MB <: HList](implicit prepend: Prepend[MA, MB]): Aux[A, B, C, NotFound[A, MA], NotFound[B, MB], NotFound[C, prepend.Out]] =
-      new Mapping2[A, B, C, NotFound[A, MA], NotFound[B, MB]] {
-        type Out = NotFound[C, prepend.Out]
-        override def apply(sa: NotFound[A, MA], sb: NotFound[B, MB], f: (A, B) => C): Out = NotFound[C, prepend.Out]()
+    implicit def nothingFound[MA <: HList, MB <: HList](implicit prepend: Prepend[MA, MB]): Aux[NotFound[MA, +?], NotFound[MB, +?], NotFound[prepend.Out, +?]] =
+      new Mapping2[NotFound[MA, ?], NotFound[MB, ?]] {
+        type Out[+C] = NotFound[prepend.Out, C]
+        override def apply[A, B, C](sa: NotFound[MA, A], sb: NotFound[MB, B])(f: (A, B) => C): Out[C] = NotFound[prepend.Out, C]()
       }
   }
 
