@@ -1,5 +1,5 @@
 package meetup.graphs
-import meetup.control.Search
+import meetup.control.{Search, comb}
 import meetup.graphs.console._
 import shapeless.labelled.{FieldType, field}
 import shapeless._
@@ -7,14 +7,12 @@ import shapeless._
 import scala.io.StdIn
 
 object program3 extends App {
-  trait |*|[x] {
+  trait |*|[x, Input] {
     self =>
-    type Input
     type Output
     def run: Input => Output
 
-    type Self = |*|[x] {
-      type Input = self.Input
+    type Self = |*|[x, Input] {
       type Output = self.Output
     }
     def inputName(name: String): Self
@@ -24,8 +22,7 @@ object program3 extends App {
   case class interpret[x, I, O]
   (runWithNames: (Option[String], Option[String]) => I => O,
    input: Option[String] = None,
-   output: Option[String] = None) extends |*|[x] {
-    type Input = I
+   output: Option[String] = None) extends |*|[x, I] {
     type Output = O
     override def run: I => O = runWithNames(input, output)
     override def inputName(name: String): interpret[x, I, O] = copy(input = Some(name))
@@ -33,8 +30,7 @@ object program3 extends App {
   }
 
 
-  type |**|[x, I, O] = |*|[x] {
-    type Input = I
+  type |**|[x, I, O] = |*|[x, I] {
     type Output = O
   }
 
@@ -85,15 +81,15 @@ object program3 extends App {
   case class rename()
 
 
-  implicit def consProgSearch[x, y, A, B, C, Rx[+a] <: Search.Result[a], Ry[+a] <: Search.Result[a]]
-  (implicit xs: Search.Aux[|**|[x, A, B], Rx],
-   ys: Search.Aux[|**|[y, B, C], Ry],
-   combo: Search.Mapping2[Rx, Ry]): Search.Aux[|**|[x >> y, A, C], combo.Out] =
+  implicit def consProgSearch[x, y, A, B, C, Rx[a] <: Search.Result[a], Ry[a] <: Search.Result[a]]
+  (implicit xs: Search.Aux[|*|[x, A], Rx],
+   ys: Search.Aux[|*|[y, B], Ry],
+   combo: Search.Mapping2[Rx, Ry, comb.Second]): Search.Aux[|*|[x >> y, A], combo.Out] =
     Search.instance[combo.Out,|**|[x >> y, A, C]](combo(xs.result, ys.result)((x, y) => interpret[x >> y, A, C]((_, _) => input => y.run(x.run(input)))))
 
 
 
-  the[Search[|*|[readLine >> putLine]]].result.value
+//  the[Search[|*|[readLine >> putLine]]].result.value
 
 
 //  consProgSearch[readLine, putLine, Unit, String, Unit, Search.Found, Search.Found] : Search[|*|[readLine >> putLine]]
