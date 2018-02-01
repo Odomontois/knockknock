@@ -51,7 +51,17 @@ trait UpdateRec[K, R <: Record, i]{
   def apply(x: i, rec: R): Out
 }
 
-object UpdateRec {
+trait UpdateRecLowPrior{
+  import UpdateRec.Aux
+  implicit def updateNext[K, K1, A, R <: Record, x, O <: Record]
+  (implicit next: Aux[K, R, x, O]): Aux[K, RCons[K1, A, R], x, RCons[K1, A, O]] =
+    new UpdateRec[K, RCons[K1, A, R], x]{
+      type Out = RCons[K1, A, O]
+      def apply(x: x, rec: RCons[K1, A, R]): Out = field[K = K1](rec.head) :: next(x, rec.tail)
+    }
+}
+
+object UpdateRec extends UpdateRecLowPrior {
   type Aux[K, R <: Record, i, O <: Record] = UpdateRec[K, R, i] {type Out = O}
   implicit def updateNil[K, x]: Aux[K, RNil, x, RCons[K, x, RNil]] = new UpdateRec[K, RNil, x]{
     type Out = RCons[K, x, RNil]
@@ -61,14 +71,6 @@ object UpdateRec {
   implicit def updateHead[K, A, x, R <: Record]: Aux[K, RCons[K, A, R], x, RCons[K, x, R]] = new UpdateRec[K, RCons[K, A, R], x]{
     type Out = RCons[K, x, R]
     def apply(x: x, rec: RCons[K, A, R]): Out = field[K = K](x) :: rec.tail
-  }
-
-  implicit def updateNext[K, K1, A, R <: Record, x, O <: Record]
-  (implicit next: Aux[K, R, x, O],
-   _e: Not[UpdateRec[K, RCons[K1, A, R], x]]): Aux[K, RCons[K1, A, R], x, RCons[K1, A, O]] =
-  new UpdateRec[K, RCons[K1, A, R], x]{
-    type Out = RCons[K1, A, O]
-    def apply(x: x, rec: RCons[K1, A, R]): Out = field[K = K1](rec.head) :: next(x, rec.tail)
   }
 }
 
@@ -90,6 +92,20 @@ object SelectRec{
   (implicit  next: SelectRec.Aux[K, R, O], _e: Not[SelectRec[K, R]]): Aux[K, RCons[K1, A, R], O] = new SelectRec[K, RCons[K1, A, R]]{
     type Out = O
     def apply(x: RCons[K1, A, R]): O = next(x.tail)
+  }
+}
+
+trait ToList[R <: Record]{
+  def apply(r: R) : List[(Any, Any)]
+}
+
+object ToList{
+  implicit def nilToList: ToList[RNil] = new ToList[RNil]{
+    override def apply(r: RNil): List[(Any, Any)] = List.empty
+  }
+
+  implicit def consToList[ K, V, R <: Record ](implicit value: ValueOf[K], next: ToList[R]): ToList[RCons[K, V, R]] = new ToList[RCons[K, V, R]]{
+    override def apply(r: RCons[K, V, R]): List[(Any, Any)] = (value.value -> r.head) :: next(r.tail)
   }
 }
 
