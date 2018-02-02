@@ -30,7 +30,7 @@ object Search extends UnhappySearch {
   def apply[A](implicit search: Search[A]): Aux[A, search.Res] = search
 
   def instance[R[a] <: Result[a], A](x: R[A]): Aux[A, R] = new Search[A] {
-    override type Res[+a] = R[a]
+    override type Res[a] = R[a]
     override def result: R[A] = x
   }
 
