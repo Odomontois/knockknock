@@ -63,7 +63,7 @@ object Term {
 
   implicit def defineProg[pname, ptyp, expr, Vars <: Record, EVars <: Record, Out]
   (implicit update: UpdateRec.Aux[pname, Vars, ptyp, EVars],
-   expr: Aux[expr, EVars, Out]): Aux[define[pname, ptyp, expr], Vars, ptyp => Out] =
+   expr: Interpret.Aux[expr, EVars, Out]): Aux[define[pname, ptyp, expr], Vars, ptyp => Out] =
     interpret(vars => param => expr.run(update(param, vars)))
 
   implicit def callProg[I, O] : Aux[call, (I => O, I), O] = interpret{case (f, x) => f(x)}
