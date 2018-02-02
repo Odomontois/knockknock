@@ -8,7 +8,7 @@ import dsl._
 
 object prog1 {
 
-  type Prog1[name <: String] = exec[readLine[name] >> putLine[name]]
+  type Program1[name <: String] = exec[readLine[name] >> putLine[name]]
   type readVar[name <: String] = readLine[name] ->> name
   type putVar[name <: String] =   do_[putLine[name] <<- name]
 
@@ -52,28 +52,31 @@ object prog1 {
 
   type Program5 = exec[
     defun["lollify", "x", String, (const["lol"] ->> "y") >> (concat <<- ("x", "y"))] >>
-//    printVars >>
-    readVar["age"]
-//    do_[apply1["lollify", "age"] >> putLine["name"]]
+    readVar["age"] >>
+    do_[apply1["lollify", "age"] >> putLine["name"]]
   ]
 
   type Program6 = exec[
-//    defun2["concatSpace", "x", String,  "y", String,
-//     ( const["lol"] ->> "sep") >>
-//     ((concat <<- ("x", "sep")) ->> "mid") >>
-//     ( concat <<- ("y", "mid"))] >>
-     readVar["first name"] >>
-//     readVar["last name"]
-//     do_[printVars]
-//    (apply2["concatSpace", "first name", "last name"] ->> "full name") >>
-    putVar["first name"]
+    readVar["first name"] >>
+    readVar["last name"] >>
+    defun2["concatSpace", "x", String,  "y", String,
+     ( const["lol"] ->> "sep") >>
+     ((concat <<- ("x", "sep")) ->> "mid") >>
+     ( concat <<- ("y", "mid"))] >>
+    (apply1["concatSpace", "last name"] ->> "lol")
+//    (apply1["lol", "last name"] ->> "full name")
   ]
 
 
 
   def main(args: Array[String]): Unit = {
+//    runProg[T = Program1["name"]]()
+//    runProg[T = Program2["name"]]()
+//    runProg[T = Program3["name", "age"]]()
+
+
 //    runProg[T = Program4]()
-//    runProg[T = Program5]()
     runProg[T = Program6]()
+//    implicitly
   }
 }
