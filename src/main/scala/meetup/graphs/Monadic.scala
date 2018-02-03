@@ -21,6 +21,8 @@ trait Monadic[x, I] {
 
 object Monadic {
   type Aux[x, I, O] = Monadic[x, I] {type Output = O}
+  type AuxFG[x, F[_], G[_], I, O] = Monadic[x, Val[F, I]]{type Output = Val[G, O]}
+  type AuxF[x, F[_], I, O] = AuxFG[x, F, F, I, O]
   type Eval[x, I, O] = Interpret.Aux[Aux, x, I, O]
   type EvalU[x, I] = Interpret[Aux, x, I]
   case class Val[F[_], A](x: F[A])
@@ -37,14 +39,28 @@ object Monadic {
   type UserInput = Map[String, String]
 
   implicit def readLineProg[name <: String, F[_], Vars <: Record, G[_]]
-    (implicit name: Witness.Aux[name], ensure: EnsureReader.Aux[F, UserInput, G], G: Apply[G]): Aux[readLine[name], Val[F, Vars], Val[G,String]] =
+    (implicit name: Witness.Aux[name], ensure: EnsureReader.Aux[F, UserInput, G], G: Apply[G]): AuxFG[readLine[name], F, G, Vars, String] =
     interpret(fi => Val(ensure.trans(fi.x) *> ensure.reader.ask.map(_(name.value))))
 
 
   type UserOutput = Vector[String]
   implicit def putLineProg[name <: String, F[_], G[_]]
-    (implicit name: Witness.Aux[name], ensure: EnsureWriter.Aux[F, UserOutput, G], G: FlatMap[G]): Aux[putLine[name], Val[F, String], Val[G, Unit]] =
+    (implicit name: Witness.Aux[name], ensure: EnsureWriter.Aux[F, UserOutput, G], G: FlatMap[G]): AuxFG[putLine[name], F, G, String, Unit] =
     interpret(fi => Val( ensure.trans(fi.x) >>= (s => ensure.writer.tell(Vector(s)))))
+
+
+//  implicit def varOutputProg[x, Vars <: Record, F[_], G[_], name <: String, Out, ROut <: Record]
+//    (implicit x: Eval[x, Val[F, Vars], Val[G, Out]],
+//     update: UpdateRec.Aux[name, Vars, Out, ROut],
+//     F: Functor[G]): AuxFG[x ->> name, F, G, Vars, ROut] =
+//    interpret(vars => Val(x.run(vars).x.map(out => update(out, vars.x))))
+//
+//  implicit def varInputProg[x, name <: String, F[_], G[_], In, Out, Vars <: Record]
+//    (implicit select: SelectRec.Aux[name, Vars, In],
+//     x: Eval[x, Val[F,In], Val[G, Out]],
+//     F: Functor[F]): AuxFG[x <<- name, F, G, Vars, Out] =
+//    interpret(vars => x.run(Val(vars.x.map(select.apply))))
+
 
 
   object runners {
