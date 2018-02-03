@@ -1,11 +1,12 @@
 package meetup.graphs
 
 
-import meetup.control.RNil
+import meetup.control.{RNil, Record}
 import meetup.control.Record.RNil
 
 import scala.language.experimental.macros
 import scala.reflect.macros.whitebox
+
 
 trait Interpret[T, I] {
   type Output
@@ -17,9 +18,6 @@ object Interpret {
   type Aux[T, I, O] = Interpret[T, I] {type Output = O}
 
   implicit def interpretMacro[T, I]: Interpret[T, I] = macro InterpretMacro.materialize[T, I]
-
-  def runProg[T]()(implicit prog: Interpret[T, RNil]): Unit = runProgI(RNil)
-  def runProgI[T, I](x: I)(implicit prog: Interpret[T, I]): Unit = prog.run(x)
 
   def initial[x, I](implicit term: Term[x, I]): Aux[Unit, I, term.Output] = new Interpret[Unit, I] {
     type Output = term.Output

@@ -1,7 +1,7 @@
 package meetup.graphs
 
 import meetup.control.{RCons, RNil, Record, ValueOf}
-import meetup.graphs.Interpret.{runProg, runProgI}
+import meetup.graphs.runners._
 import meetup.graphs.console._
 import meetup.graphs.dsl._
 import meetup.graphs.lib._
@@ -25,8 +25,6 @@ object prog1 {
     putVar[name]
 
 
-
-
   type concatWith[x, y, sep] =
     (const[sep] ->> "sep") >>
     ((concat <<- (x, "sep")) ->> "mid") >>
@@ -47,26 +45,38 @@ object prog1 {
     do_[apply1["lollify", "age"] >> putLine["name"]]
 
   type Program6 =
-    readVar["first name"] >>
+  readVar["first name"] >>
   readVar["last name"] >>
   defun2["concatSpace", "x", String,  "y", String,
-  ( const[" "] ->> "sep") >>
-  ((concat <<- ("x", "sep")) ->> "mid") >>
-  ( concat <<- ("mid", "y"))] >>
-      (apply2["concatSpace", "first name", "last name"] ->> "full name")  >>
+    (const[" "] ->> "sep") >>
+    ((concat <<- ("x", "sep")) ->> "mid") >>
+    (concat <<- ("mid", "y"))] >>
+  (apply2["concatSpace", "first name", "last name"] ->> "full name")  >>
   putVar["full name"]
+  //     do_[printVars]
+
+  type Program7 =
+    readVar["first name"] >>
+    readVar["last name"] >>
+    defun2["concatSpace", "x", String,  "y", String,
+    (const[" "] ->> "sep") >>
+    ((concat <<- ("x", "sep")) ->> "mid") >>
+    (concat <<- ("mid", "y"))] >>
+    (apply2["concatSpace", "first name", "last name"] ->> "full name")  >>
+    putVar["full name"]
   //     do_[printVars]
 
 
 
 
   def main(args: Array[String]): Unit = {
-//    runProgI[Program3["name", "age"], RNil.type](RNil)
+//    runProgT[Program3["name", "age"]].apply()
 //    Interpret.interpretMacro[Program3["name", "age"], RNil.type]
 //    val u = Interpret.interpretMacro[readLine["name"] >> putLine["name"], RNil.type]
 //    println(weakTypeOf[u.Output].dealias.widen.dealias)
 
-    runProg[Program6]()
+//    withTypeTag[Program6].run()
+    withDisplayOut[Program6].run()
 //    Interpret.interpretMacro[concatWith["a", "b", ""], RCons["a", String, RCons["b", String, RNil]]]
   }
 }

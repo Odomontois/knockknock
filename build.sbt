@@ -15,6 +15,6 @@ libraryDependencies += scalaOrganization.value % "scala-reflect" % scalaVersion.
 scalacOptions ++= Seq(
   "-Yliteral-types",
   "-Ypartial-unification",
-  "-Ymacro-debug-lite"
+//  "-Ymacro-debug-lite"
 )
 
