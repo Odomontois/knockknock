@@ -1,9 +1,6 @@
 package meetup.control
 
 import Record._
-import meetup.control.UpdateRec1.Aux
-import shapeless.DepFn1
-import shapeless.{::, HList, HNil}
 
 import scala.annotation.showAsInfix
 
@@ -33,39 +30,9 @@ object Record {
 
   implicit class RecOps[R <: Record](val self: R) extends AnyVal {
     def ::[K, V](fld: #->[K, V]): RCons[K, V, R] = RCons(fld.value, self)
-    def +[K, V](fld: #->[K, V])(implicit update: UpdateRec1[K, R]): update.Out[V] = update(fld.value, self)
+    def +[K, V](fld: #->[K, V])(implicit update: UpdateRec[K, R, V]): update.Out = update(fld.value, self)
     def get[K](implicit select: SelectRec[K, R]): select.Out = select(self)
   }
-}
-
-trait UpdateRec1[K, R <: Record] {
-  type Out[x] <: Record
-  def apply[x](x: x, rec: R): Out[x]
-}
-
-
-trait UpdateLowPriority {
-  implicit def updateNext[K, K1, A, R <: Record, O[x] <: Record]
-  (implicit next: UpdateRec1.Aux[K, R, O]): Aux[K, RCons[K1, A, R], λ[x => RCons[K1, A, O[x]]]] =
-    new UpdateRec1[K, RCons[K1, A, R]] {
-      type Out[x] = RCons[K1, A, O[x]]
-      def apply[x](x: x, rec: RCons[K1, A, R]): Out[x] = field[K1](rec.head) :: next(x, rec.tail)
-    }
-}
-object UpdateRec1 {
-  type Aux[K, R <: Record, O[x] <: Record] = UpdateRec1[K, R] {type Out[x] = O[x]}
-
-  implicit def updateNil[K]: Aux[K, RNil, λ[x => RCons[K, x, RNil]]] = new UpdateRec1[K, RNil] {
-    type Out[x] = RCons[K, x, RNil]
-    def apply[x](x: x, rec: RNil) = RCons(x, RNil)
-  }
-
-  implicit def updateHead[K, A, R <: Record]: Aux[K, RCons[K, A, R], λ[x => RCons[K, x, R]]] = new UpdateRec1[K, RCons[K, A, R]] {
-    type Out[x] = RCons[K, x, R]
-    def apply[x](x: x, rec: RCons[K, A, R]): Out[x] = field[K](x) :: rec.tail
-  }
-
-
 }
 
 trait UpdateRec[K, R <: Record, i] {
@@ -90,10 +57,11 @@ object UpdateRec extends UpdateRecLowPrior {
     def apply(x: x, rec: RNil) = RCons(x, RNil)
   }
 
-  implicit def updateHead[K, A, x, R <: Record]: Aux[K, RCons[K, A, R], x, RCons[K, x, R]] = new UpdateRec[K, RCons[K, A, R], x] {
-    type Out = RCons[K, x, R]
-    def apply(x: x, rec: RCons[K, A, R]): Out = field[K](x) :: rec.tail
-  }
+  implicit def updateHead[K, A, x, R <: Record]: Aux[K, RCons[K, A, R], x, RCons[K, x, R]] =
+    new UpdateRec[K, RCons[K, A, R], x] {
+      type Out = RCons[K, x, R]
+      def apply(x: x, rec: RCons[K, A, R]): Out = field[K](x) :: rec.tail
+    }
 }
 
 trait SelectRec[K, R <: Record] {
@@ -136,7 +104,7 @@ trait DisplayType[R] {
 }
 
 object DisplayType {
-  type Aux[R, O] = DisplayType[R]{type Out = O}
+  type Aux[R, O] = DisplayType[R] {type Out = O}
 
   implicit def nilDisplay: Aux[RNil, RNil] = new DisplayType[RNil] {
     type Out = RNil

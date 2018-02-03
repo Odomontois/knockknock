@@ -1,14 +1,11 @@
 package meetup.graphs
 
 
-import meetup.control.{RNil, Record}
-import meetup.control.Record.RNil
-
 import scala.language.experimental.macros
 import scala.reflect.macros.whitebox
 
 
-trait Interpret[T, I] {
+trait Interpret[U[_, _], T, I] {
   type Output
   def run(x: I): Output
   def as[T1]: Interpret.Aux[T1, I, Output] = this.asInstanceOf[Interpret.Aux[T1, I, Output]]

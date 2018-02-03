@@ -3,6 +3,7 @@ package meetup.graphs
 import meetup.control._
 import meetup.graphs.console._
 import Record._
+import meetup.graphs.Interpret.Aux
 import meetup.graphs.lib.concat
 import shapeless.Witness
 
@@ -15,8 +16,7 @@ trait Term[x, Input] {
 
 object Term {
   type Aux[x, I, O] = Term[x, I] {
-    type Output = O
-  }
+    type Output = O  }
 
 
   case class interpret[x, I, O](run: I => O) extends Term[x, I] {
@@ -32,6 +32,8 @@ object Term {
   implicit def comboProg[x, y, Vars <: Record, Out1, Out2]
   (implicit x: Interpret.Aux[x, Vars, Out1], y: Interpret.Aux[y, Vars, Out2]): Aux[(x, y), Vars, (Out1, Out2)] =
     interpret(vars => (x.run(vars), y.run(vars)))
+
+
 
 
   implicit def varOutputProg[x, Vars <: Record, name <: String, Out, ROut <: Record]
@@ -50,9 +52,10 @@ object Term {
    x: Aux[x, (In1, In2), Out]): Aux[x <<- (name1, name2), Vars, Out] =
     interpret(vars => x.run((select1(vars), select2(vars))))
 
-  implicit def execProg[prog, Out](implicit prog: Interpret.Aux[prog, RNil, Out]): Aux[exec[prog], Unit, Unit] =
-    interpret(_ => {prog.run(RNil); ()})
-//
+
+
+
+
   implicit def doProg[prog, Vars <: Record](implicit prog: Interpret[prog, Vars]): Aux[do_[prog], Vars, Vars] =
     interpret(vars => {prog.run(vars); vars})
 
@@ -61,6 +64,9 @@ object Term {
 
   implicit def concatProg: Aux[concat, (String, String), String] =   interpret{case (x, y) => x + y}
 
+
+
+
   implicit def defineProg[pname, ptyp, expr, Vars <: Record, EVars <: Record, Out]
   (implicit update: UpdateRec.Aux[pname, Vars, ptyp, EVars],
    expr: Interpret.Aux[expr, EVars, Out]): Aux[define[pname, ptyp, expr], Vars, ptyp => Out] =
@@ -68,9 +74,18 @@ object Term {
 
   implicit def callProg[I, O] : Aux[call, (I => O, I), O] = interpret{case (f, x) => f(x)}
 
-  implicit def getProg[name, Vars <: Record, Out](implicit select: SelectRec.Aux[name, Vars, Out]): Aux[get[name], Vars, Out] =
-    interpret(vars => select(vars))
 
-  implicit def printVars[Vars <: Record](implicit toList: ToList[Vars]): Aux[printVars, Vars, Vars] =
-    interpret(vars => {println(toList(vars)); vars})
+  def initial[x, I](implicit term: Term[x, I]): Interpret.Aux[Unit, I, term.Output] = new Interpret[Unit, I] {
+    type Output = term.Output
+    override def run(x: I): term.Output = term.run(x)
+  }
+
+  def combine[x, I] = new CombinePA[x, I]
+  class CombinePA[x, I] {
+    def apply[B](prefix: Aux[Unit, I, B])(implicit term: Term[x, B]): Aux[Unit, I, term.Output] = new Interpret[Unit, I] {
+      type Output = term.Output
+      override def run(x: I): term.Output = term.run(prefix.run(x))
+    }
+  }
+
 }
