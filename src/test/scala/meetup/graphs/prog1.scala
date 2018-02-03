@@ -5,6 +5,7 @@ import meetup.graphs.runners._
 import meetup.graphs.console._
 import meetup.graphs.dsl._
 import meetup.graphs.lib._
+import Record.field
 
 import scala.reflect.runtime.universe._
 import Record.RNil
@@ -75,8 +76,9 @@ object prog1 {
 //    val u = Interpret.interpretMacro[readLine["name"] >> putLine["name"], RNil.type]
 //    println(weakTypeOf[u.Output].dealias.widen.dealias)
 
-//    withTypeTag[Program6].run()
     withDisplayOut[Program6].run()
-//    Interpret.interpretMacro[concatWith["a", "b", ""], RCons["a", String, RCons["b", String, RNil]]]
+
+//    Interpret.interpretMacro[Term.Aux,Program1["name"], RNil]
+//    withTypeTag[Program1["name"]].run()
   }
 }
