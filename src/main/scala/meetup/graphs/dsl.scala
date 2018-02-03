@@ -24,4 +24,17 @@ object dsl {
 
   type defun3[fname, pname, ptype, pname2, ptype2, pname3, ptype3, expr] = (define[pname, ptype, define[pname2, ptype2, define[pname3, ptype3, expr]]] ->> fname)
   type apply3[fname, pname1, pname2, pname3] = (apply2[fname, pname1, pname2], get[fname]) >> call
+
+  type :=[A, B] = B ->> A
+  type $[A, B]  = A <<- B
+}
+
+object console {
+  trait readLine[name]
+  trait putLine[name]
+  trait printVars
+}
+
+object lib {
+  trait concat
 }
