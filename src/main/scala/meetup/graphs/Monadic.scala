@@ -4,63 +4,77 @@ import cats.data.{ReaderT, WriterT}
 import cats.mtl.{ApplicativeAsk, ApplicativeLayer, FunctorLayer, FunctorTell}
 import cats.{Applicative, Apply, FlatMap, Functor, Id, Monad, Monoid, ~>}
 import meetup.control.Record
-import meetup.graphs.Term.Aux
 import shapeless.Witness
 import meetup.control._
 import meetup.graphs.console._
 import cats.syntax.apply._
 import cats.syntax.functor._
 import cats.syntax.flatMap._
+import cats.syntax.applicative._
 import cats.instances.vector._
 
-trait Monadic[x, I] {
-  type Output
+trait Monadic[x, F[_], I] {
+  type FOut[_]
+  type VOut
 
-  def run: I => Output
+  def run(fi: F[I]): FOut[VOut] = trans(fi).flatMap(exec)
+  def trans: F ~> FOut
+  def exec: I => FOut[VOut]
+  implicit def monad: Monad[FOut]
+  def as[y]: Monadic.Aux[y, F, I, FOut, VOut] = this.asInstanceOf[Monadic.Aux[y, F, I, FOut, VOut]]
 }
 
 object Monadic {
-  type Aux[x, I, O] = Monadic[x, I] {type Output = O}
-  type AuxFG[x, F[_], G[_], I, O] = Monadic[x, Val[F, I]]{type Output = Val[G, O]}
-  type AuxF[x, F[_], I, O] = AuxFG[x, F, F, I, O]
-  type Eval[x, I, O] = Interpret.Aux[Aux, x, I, O]
-  type EvalU[x, I] = Interpret[Aux, x, I]
-  case class Val[F[_], A](x: F[A])
+  type Aux[x, F[_], I, G[_], O] = Monadic[x, F, I] {type VOut = O; type FOut[a] = G[a]}
+  type Eval[x, F[_], I, G[_], O] = InterpretF.Aux[Aux, x, F, I, G, O]
+  type EvalU[x, F[_], I] = InterpretF[Aux, x, F, I]
 
-  case class interpret[x, I, O](run: I => O) extends Monadic[x, I] {
-    type Output = O
+
+  trait Ev[x, F[_], I, O] {
+    type FOut[_]
+    val value: Monadic.Aux[x, F, I, FOut, O]
   }
 
-  case class mapVal[x, F[_]: Functor, I, O](f: I => O) extends Monadic[x, Val[F, I]] {
-    type Output = Val[F, O]
-    val run = (v: Val[F, I]) => Val(v.x.map(f))
+  object Ev {
+    type Aux[x, F[_], I, G[_], O] = Ev[x, F, I, O] {type FOut[a] = G[a]}
+    implicit def instance[x, F[_], I](implicit int: InterpretF[Monadic.Aux, x, F, I]): Aux[x, F, I, int.FOut, int.VOut] =
+      new Ev[x, F, I, int.VOut] {
+        type FOut[a] = int.FOut[a]
+        val value = int.value
+      }
+  }
+
+  case class interpret[x, F[_], A, G[_], B](trans: F ~> G, exec: A => G[B])(implicit val monad: Monad[G]) extends Monadic[x, F, A] {
+    type FOut[a] = G[a]
+    type VOut = B
   }
 
   type UserInput = Map[String, String]
 
   implicit def readLineProg[name <: String, F[_], Vars <: Record, G[_]]
-    (implicit name: Witness.Aux[name], ensure: EnsureReader.Aux[F, UserInput, G], G: Apply[G]): AuxFG[readLine[name], F, G, Vars, String] =
-    interpret(fi => Val(ensure.trans(fi.x) *> ensure.reader.ask.map(_(name.value))))
+    (implicit name: Witness.Aux[name], ensure: EnsureReader[F, UserInput, G], G: Monad[G]): Aux[readLine[name], F, Vars, G, String] =
+    interpret[readLine[name], F, Vars, G, String](ensure.trans, _ => ensure.reader.ask.map(_ (name.value)))
 
 
-  type UserOutput = Vector[String]
+  type UserOutput = Vector[(String, String)]
   implicit def putLineProg[name <: String, F[_], G[_]]
-    (implicit name: Witness.Aux[name], ensure: EnsureWriter.Aux[F, UserOutput, G], G: FlatMap[G]): AuxFG[putLine[name], F, G, String, Unit] =
-    interpret(fi => Val( ensure.trans(fi.x) >>= (s => ensure.writer.tell(Vector(s)))))
+    (implicit name: Witness.Aux[name], ensure: EnsureWriter[F, UserOutput, G], G: Monad[G]): interpret[putLine[name], F, String, G, Unit] =
+    interpret(ensure.trans: F ~> G, s => ensure.writer.tell(Vector((name.value, s))))
 
 
-//  implicit def varOutputProg[x, Vars <: Record, F[_], G[_], name <: String, Out, ROut <: Record]
-//    (implicit x: Eval[x, Val[F, Vars], Val[G, Out]],
-//     update: UpdateRec.Aux[name, Vars, Out, ROut],
-//     F: Functor[G]): AuxFG[x ->> name, F, G, Vars, ROut] =
-//    interpret(vars => Val(x.run(vars).x.map(out => update(out, vars.x))))
-//
-//  implicit def varInputProg[x, name <: String, F[_], G[_], In, Out, Vars <: Record]
-//    (implicit select: SelectRec.Aux[name, Vars, In],
-//     x: Eval[x, Val[F,In], Val[G, Out]],
-//     F: Functor[F]): AuxFG[x <<- name, F, G, Vars, Out] =
-//    interpret(vars => x.run(Val(vars.x.map(select.apply))))
+  implicit def varOutputProg[x, F[_], Vars <: Record, name <: String, Out]
+    (implicit x: Ev[x, F, Vars, Out],
+     update: UpdateRec[name, Vars, Out]): interpret[x ->> name, F, Vars, x.FOut, update.Out] = {
+    import x.value._
+    interpret(trans, (vars: Vars) => monad.map(exec(vars))(out => update(out, vars)))(monad)
+  }
 
+  implicit def varInputProg[x, name <: String, F[_], G[_], In, Out, Vars <: Record]
+    (implicit select: SelectRec.Aux[name, Vars, In],
+     x: Eval[x, F, In, G, Out]): interpret[x <<- name, F, Vars, G, Out] = {
+    import x.value._
+    interpret(trans, vars => exec(select.apply(vars)))
+  }
 
 
   object runners {
@@ -69,40 +83,41 @@ object Monadic {
 
     import scala.reflect.runtime.universe._
 
-    type Base = Val[Id, RNil]
-    val Base: Base = Val[Id, RNil](RNil)
+    def runProg[T]()(implicit prog: EvalU[T, Id, RNil]): Unit = runProgI[T, Id, RNil](RNil)
+    def runProgI[T, F[_], I](x: F[I])(implicit prog: EvalU[T, F, I]): Unit = prog.value.run(x)
+    def withTypeTag[T](implicit prog: EvalU[T, Id, RNil]) = new RunProgTPA[T, prog.FOut, prog.VOut](prog)
+    class ??
 
-    def runProg[T]()(implicit prog: EvalU[T, Base]): Unit = runProgI(Base)
-    def runProgI[T, I](x: I)(implicit prog: EvalU[T, I]): Unit = prog.run(x)
-    def withTypeTag[T](implicit prog: EvalU[T, Val[Id, RNil]]) = new RunProgTPA[T, prog.Output](prog)
-
-    class RunProgTPA[T, O](prog: Eval[T, Val[Id, RNil], O]) {
-      def run(implicit tt: TypeTag[O]): O = {
-        println(tt)
-        prog.run(Base)
+    class RunProgTPA[T, G[_], O](prog: Eval[T, Id, RNil, G, O]) {
+      def run(implicit tt: TypeTag[O], tf: TypeTag[G[??]]): G[O] = {
+        println(tt.tpe)
+        println(tf.tpe)
+        prog.value.run(RNil)
       }
     }
 
-    def withDisplayOut[T](implicit prog: EvalU[T, RNil]) = new DisplayOuyPA[T, prog.Output](prog)
+    def withDisplayOut[T](implicit prog: EvalU[T, Id, RNil]) = new DisplayOuyPA[T, prog.FOut, prog.VOut](prog)
 
-    class DisplayOuyPA[T, O](prog: Eval[T, RNil, O]) {
+    class DisplayOuyPA[T, G[_], O](prog: Eval[T, Id, RNil, G, O]) {
       def run[D]()(implicit dd: Display[O]): Unit = {
+        import prog.value.monad
 
-        dd(prog.run(RNil)).iterator.map { case (v, (kt, vt)) => s"$kt -> $v : $vt" }.foreach(println)
+        prog.value.run(RNil).map(x => dd(x).iterator.map { case (v, (kt, vt)) => s"$kt -> $v : $vt" }.mkString("\n"))
       }
     }
   }
 
-  implicit val interpreter: Interpreter[Aux] = new Interpreter[Aux] {
-    def initial[x, I, O](implicit term: Aux[x, I, O]): Interpret.Aux[Aux, Unit, I, O] = new Interpret[Aux, Unit, I] {
-      type Output = term.Output
-      override def run(x: I): term.Output = term.run(x)
+  implicit object interpreter extends InterpreterF[Aux] {
+    def init[x, F[_], A] = new InitPA[x, F, A]
+    class InitPA[x, F[_], A] {
+      def apply()(implicit term: Monadic[x, F, A]): Aux[Unit, F, A, term.FOut, term.VOut] = term.as[Unit]
     }
-    override def combine[x, I, B, O](prefix: Interpret.Aux[Aux, Unit, I, B])(implicit term: Aux[x, B, O]): Interpret.Aux[Aux, Unit, I, O] =
-      new Interpret[Aux, Unit, I] {
-        type Output = term.Output
-        override def run(x: I): term.Output = term.run(prefix.run(x))
-      }
+
+    def combine[y] = new CombinePA[y]
+    class CombinePA[y] {
+      def apply[F[_], A, G[_], B](prefix: Aux[Unit, F, A, G, B])(implicit term: Monadic[y, G, B]): Aux[Unit, F, A, term.FOut, lueterm.VOut] =
+        interpret(term.trans.compose(prefix.trans), (x: A) => term.monad.flatMap(term.trans(prefix.exec(x)))(term.exec))(term.monad)
+    }
   }
 }
 
@@ -112,19 +127,16 @@ import cats.mtl.instances.local._
 import cats.mtl.instances.listen._
 import cats.mtl.hierarchy.base._
 
-trait EnsureReader[F[_], R] {
-  type Result[_]
-  def reader: ApplicativeAsk[Result, R]
-  def trans: F ~> Result
+trait EnsureReader[F[_], R, G[_]] {
+  def reader: ApplicativeAsk[G, R]
+  def trans: F ~> G
 }
 
 
 object EnsureReader extends FallbackEnsureReader {
-  type Aux[F[_], R, G[_]] = EnsureReader[F, R] {type Result[x] = G[x]}
 
-  implicit def useExisting[F[_], R](implicit ask: ApplicativeAsk[F, R]): Aux[F, R, F] =
-    new EnsureReader[F, R] {
-      type Result[x] = F[x]
+  implicit def useExisting[F[_], R](implicit ask: ApplicativeAsk[F, R]): EnsureReader[F, R, F] =
+    new EnsureReader[F, R, F] {
       def reader = ask
       def trans = FunctionK.id
     }
@@ -132,37 +144,31 @@ object EnsureReader extends FallbackEnsureReader {
 
 
 trait FallbackEnsureReader {
-  final implicit def upgrade[F[_], R](implicit F: Applicative[F]): EnsureReader.Aux[F, R, ReaderT[F, R, ?]] =
-    new EnsureReader[F, R] {
-      type Result[x] = ReaderT[F, R, x]
-      val reader: ApplicativeAsk[ReaderT[F, R, ?], R] = ApplicativeAsk[Result, R]
-      val trans: ~>[F, ReaderT[F, R, ?]] = FunctionK.lift((x: F[Any]) => ApplicativeLayer[Result, F].layer(x))
+  final implicit def upgrade[F[_], R](implicit F: Applicative[F]): EnsureReader[F, R, ReaderT[F, R, ?]] =
+    new EnsureReader[F, R, ReaderT[F, R, ?]] {
+      val reader: ApplicativeAsk[ReaderT[F, R, ?], R] = ApplicativeAsk[ReaderT[F, R, ?], R]
+      val trans: ~>[F, ReaderT[F, R, ?]] = FunctionK.lift((x: F[Any]) => ApplicativeLayer[ReaderT[F, R, ?], F].layer(x))
     }
 }
 
-trait EnsureWriter[F[_], W] {
-  type Result[_]
-  def writer: FunctorTell[Result, W]
-  def trans: F ~> Result
+trait EnsureWriter[F[_], W, G[_]] {
+  def writer: FunctorTell[G, W]
+  def trans: F ~> G
 }
 
 object EnsureWriter extends FallbackEnsureWriter {
-  type Aux[F[_], W, G[_]] = EnsureWriter[F, W] {type Result[x] = G[x]}
-
-  implicit def useExisting[F[_], W](implicit tell: FunctorTell[F, W]): Aux[F, W, F] =
-    new EnsureWriter[F, W] {
-      type Result[x] = F[x]
+  implicit def useExisting[F[_], W](implicit tell: FunctorTell[F, W]): EnsureWriter[F, W, F] =
+    new EnsureWriter[F, W, F] {
       def writer = tell
       def trans = FunctionK.id
     }
 }
 
-trait FallbackEnsureWriter{
-  final implicit def upgrade[F[_], W](implicit F: Monad[F], W: Monoid[W]): EnsureWriter.Aux[F, W, WriterT[F, W, ?]] =
-    new EnsureWriter[F, W] {
-      type Result[x] = WriterT[F, W, x]
-      val writer: FunctorTell[WriterT[F, W, ?], W] = FunctorTell[Result, W]
-      val trans: ~>[F, WriterT[F, W, ?]] = FunctionK.lift((x: F[Any]) => FunctorLayer[Result, F].layer(x))
+trait FallbackEnsureWriter {
+  final implicit def upgrade[F[_], W](implicit F: Monad[F], W: Monoid[W]): EnsureWriter[F, W, WriterT[F, W, ?]] =
+    new EnsureWriter[F, W, WriterT[F, W, ?]] {
+      val writer: FunctorTell[WriterT[F, W, ?], W] = FunctorTell[WriterT[F, W, ?], W]
+      val trans: ~>[F, WriterT[F, W, ?]] = FunctionK.lift((x: F[Any]) => FunctorLayer[WriterT[F, W, ?], F].layer(x))
     }
 }
 

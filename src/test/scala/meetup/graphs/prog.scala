@@ -13,6 +13,7 @@ object prog {
   type Program1[name <: String] = readLine[name] >> putLine[name]
   type Program1A[name <: String] = readLine[name]
 
+
   type Program2[name <: String] = readVar[name] >> putVar[name]
 
   type Program3[name <: String, age <: String] =
@@ -32,8 +33,9 @@ object prog {
       ((concat $ (Mid, y)))
 
   type Name = "name"
+  type Age = "age"
   type FirstName = "first name"
-  type LastName = "first name"
+  type LastName = "last name"
   type FullName = "full name"
   type Space = " "
 
@@ -67,7 +69,7 @@ object prog {
       defun2[ConcatSpace, X, String,  Y, String,
         (const[Space] ->> Sep) >>
           ((concat <<- (X, Sep)) ->> Mid) >>
-          (concat <<- (Mid, Mid))] >>
+          (concat <<- (Mid, Y))] >>
       (apply2[ConcatSpace, FirstName, LastName] ->> FullName)  >>
       putVar[FullName]
 
