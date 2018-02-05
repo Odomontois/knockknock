@@ -87,6 +87,16 @@ object Monadic {
     interpret(trans, (vars: Vars) => monad.as(exec(vars), vars))(monad)
   }
 
+  implicit def constProg[value <: String, F[_], Vars](implicit valueOf: Witness.Aux[value], monad: Monad[F]): interpret[const[value], F, Vars, F, String] =
+    interpret(FunctionK.id, _ => monad.pure(valueOf.value))
+
+//  implicit def defineProg[pname, ptyp, expr, F[_], Vars <: Record, EVars <: Record, Out]
+//  (implicit update: UpdateRec.Aux[pname, Vars, ptyp, EVars],
+//   ev: Ev[expr, F[_], EVars, Out]): interpret[define[pname, ptyp, expr], F[_], Vars,  ev.FOut, ptyp => Out] = {
+//    import ev.value._
+//    interpret(trans, vars => param => ev.value.run(update(param, vars)))
+//  }
+
 
   object runners {
     import meetup.control.{Display, DisplayType, RNil, Record}
