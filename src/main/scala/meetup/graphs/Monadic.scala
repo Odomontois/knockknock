@@ -17,6 +17,7 @@ trait Monadic[x, F[_], I] {
   type FOut[_]
   type VOut
 
+  def int: Monadic.interpret[x, F, I, FOut, VOut]
   def run(fi: F[I]): FOut[VOut] = trans(fi).flatMap(exec)
   def trans: F ~> FOut
   def exec: I => FOut[VOut]
@@ -47,6 +48,10 @@ object Monadic {
   case class interpret[x, F[_], A, G[_], B](trans: F ~> G, exec: A => G[B])(implicit val monad: Monad[G]) extends Monadic[x, F, A] {
     type FOut[a] = G[a]
     type VOut = B
+    def int = this
+
+    def andThen[y](implicit term: Monadic[y, G, B]): interpret[x, F, A, term.FOut, term.VOut] =
+      interpret(term.trans.compose(this.trans), (x: A) => term.monad.flatMap(term.trans(this.exec(x)))(term.exec))(term.monad)
   }
 
   type UserInput = Map[String, String]
@@ -69,11 +74,17 @@ object Monadic {
     interpret(trans, (vars: Vars) => monad.map(exec(vars))(out => update(out, vars)))(monad)
   }
 
-  implicit def varInputProg[x, name <: String, F[_], G[_], In, Out, Vars <: Record]
+  implicit def varInputProg[x, name <: String, F[_], In, Vars <: Record, Out]
     (implicit select: SelectRec.Aux[name, Vars, In],
-     x: Eval[x, F, In, G, Out]): interpret[x <<- name, F, Vars, G, Out] = {
+     x: Ev[x, F, In, Out]): interpret[x <<- name, F, Vars, x.FOut, Out] = {
     import x.value._
-    interpret(trans, vars => exec(select.apply(vars)))
+    interpret(trans, (vars: Vars) => exec(select.apply(vars)))(monad)
+  }
+
+  implicit def doProg[prog, Vars <: Record, F[_]](implicit prog: EvalU[prog, F, Vars]):
+    interpret[do_[prog], F, Vars, prog.FOut, Vars] = {
+    import prog.value._
+    interpret(trans, (vars: Vars) => monad.as(exec(vars), vars))(monad)
   }
 
 
@@ -90,8 +101,8 @@ object Monadic {
 
     class RunProgTPA[T, G[_], O](prog: Eval[T, Id, RNil, G, O]) {
       def run(implicit tt: TypeTag[O], tf: TypeTag[G[??]]): G[O] = {
-        println(tt.tpe)
-        println(tf.tpe)
+        println(s"output tag: ${tt.tpe}")
+        println(s"functor tag: ${tf.tpe}")
         prog.value.run(RNil)
       }
     }
@@ -99,7 +110,7 @@ object Monadic {
     def withDisplayOut[T](implicit prog: EvalU[T, Id, RNil]) = new DisplayOuyPA[T, prog.FOut, prog.VOut](prog)
 
     class DisplayOuyPA[T, G[_], O](prog: Eval[T, Id, RNil, G, O]) {
-      def run[D]()(implicit dd: Display[O]): Unit = {
+      def run[D](implicit dd: Display[O]): G[String] = {
         import prog.value.monad
 
         prog.value.run(RNil).map(x => dd(x).iterator.map { case (v, (kt, vt)) => s"$kt -> $v : $vt" }.mkString("\n"))
@@ -110,13 +121,7 @@ object Monadic {
   implicit object interpreter extends InterpreterF[Aux] {
     def init[x, F[_], A] = new InitPA[x, F, A]
     class InitPA[x, F[_], A] {
-      def apply()(implicit term: Monadic[x, F, A]): Aux[Unit, F, A, term.FOut, term.VOut] = term.as[Unit]
-    }
-
-    def combine[y] = new CombinePA[y]
-    class CombinePA[y] {
-      def apply[F[_], A, G[_], B](prefix: Aux[Unit, F, A, G, B])(implicit term: Monadic[y, G, B]): Aux[Unit, F, A, term.FOut, lueterm.VOut] =
-        interpret(term.trans.compose(prefix.trans), (x: A) => term.monad.flatMap(term.trans(prefix.exec(x)))(term.exec))(term.monad)
+      def apply()(implicit term: Monadic[x, F, A]): interpret[Unit, F, A, term.FOut, term.VOut] = term.as[Unit].int
     }
   }
 }

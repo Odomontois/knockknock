@@ -51,13 +51,10 @@ object InterpretFMacro {
     val namePairs = names.zip(None #:: names.map(Some(_)))
     val vals = unconsTpe(T).zip(namePairs).map {
       case (typ, (name, None)) => q"val $name = $Int.init[$typ, $F, $I]()"
-      case (typ, (name, Some(prev))) => q"val $name = $Int.combine[$typ]($prev)"
+      case (typ, (name, Some(prev))) => q"val $name = $prev.andThen[$typ]"
     }
     val myInstance = c.freshName[TermName]("myInstance")
 
-    //    c.info(c.enclosingPosition, vals.toString, false)
-    //    c.info(c.enclosingPosition, T.toString, false)
-    //    c.info(c.enclosingPosition, unconsTpe(T)toString, false)
     val last = names(vals.length - 1)
 
     q"""{
@@ -78,6 +75,5 @@ object InterpretFMacro {
 
 trait InterpreterF[U[_, _[_], _, _[_], _]] {
   def init[x, F[_], I]: Any
-  def combine[x]: Any
 }
 
