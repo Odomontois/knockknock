@@ -25,12 +25,12 @@ object Record {
 
   def field[K] = new MkField[K]
   class MkField[K] {
-    def apply[V](value: V): field[K, V] = new field(value)
+    def apply[V](value: V): #->[K, V] = new #->(value)
   }
 
   implicit class RecOps[R <: Record](val self: R) extends AnyVal {
-    def ::[K, V](fld: field[K, V]): RCons[K, V, R] = RCons(fld.value, self)
-    def +[K, V](fld: field[K, V])(implicit update: UpdateRec[K, R, V]): update.Out = update(fld.value, self)
+    def ::[K, V](fld: #->[K, V]): RCons[K, V, R] = RCons(fld.value, self)
+    def +[K, V](fld: #->[K, V])(implicit update: UpdateRec[K, R, V]): update.Out = update(fld.value, self)
     def get[K](implicit select: SelectRec[K, R]): select.Out = select(self)
   }
 }
@@ -111,11 +111,11 @@ object DisplayType {
     override def tag: TypeTag[RNil] = typeTag[RNil]
   }
 
-  implicit def consDisplay[K, V, R <: Record, O](implicit next: Aux[R, O], kt: TypeTag[K], vt: TypeTag[V]): Aux[RCons[K, V, R], (K field V) %:: O] = new DisplayType[RCons[K, V, R]] {
-    type Out = (K field V) %:: O
+  implicit def consDisplay[K, V, R <: Record, O](implicit next: Aux[R, O], kt: TypeTag[K], vt: TypeTag[V]): Aux[RCons[K, V, R], (K #-> V) %:: O] = new DisplayType[RCons[K, V, R]] {
+    type Out = (K #-> V) %:: O
     override def tag: TypeTag[Out] = {
       implicit def outTag: TypeTag[O] = next.tag
-      typeTag[(K field V) %:: O]
+      typeTag[(K #-> V) %:: O]
     }
   }
 }

@@ -1,7 +1,6 @@
 package meetup.control
 
-import Record._
-import cats.free.Free
+import RecordF._
 
 import scala.annotation.showAsInfix
 
@@ -17,55 +16,55 @@ final case class LiftedFuncF[F[_], A, B <: RecordValueF[F]](f: A => B) extends R
 
 
 @showAsInfix
-final case class RConsF[K, F[_], V <: RecordValueF[F], T <: RecordF[F]](head: V, tail: T) extends RecordF[F]
+final case class RConsF[F[_], K, V <: RecordValueF[F], T <: RecordF[F]](head: V, tail: T) extends RecordF[F]
 
 object RecordF {
   def value[F[_]] = new ValuePA[F]
-  class ValuePA[F[_]]{
+  class ValuePA[F[_]] {
     def apply[A](value: F[A]): LiftedValueF[F, A] = new LiftedValueF[F, A](value)
   }
 
   final case class field[F[_], K, V <: RecordValueF[F]](value: V) extends AnyVal
 
   implicit class RecOps[F[_], R <: RecordF[F]](val self: R) extends AnyVal {
-    def ::[K, V](fld: field[F, K, V]): RConsF[K, F, V, R] = RConsF[K, F, V, R](fld.value, self)
-    def +[K, V](fld: field[F, K, V])(implicit update: UpdateRecF[F, K, R, V]): update.Out = update(fld.value, self)
-    def get[K](implicit select: SelectRec[K, R]): select.Out = select(self)
+    def ::[K, V <: RecordValueF[F]](fld: field[F, K, V]): RConsF[F, K, V, R] = RConsF[F, K, V, R](fld.value, self)
+    def +[K, V <: RecordValueF[F]](fld: field[F, K, V])(implicit update: UpdateRecF[F, K, R, V]): update.Out = update(fld.value, self)
+    def get[K](implicit select: SelectRecF[F, K, R]): select.Out = select(self)
   }
 }
 
-trait UpdateRecF[F[_], K, R <: Record, i] {
+trait UpdateRecF[F[_], K, R <: Record, V <: RecordValueF[F]] {
   type Out <: RecordF[F]
-  def apply(x: i, rec: R): Out
+  def apply(x: V, rec: R): Out
 }
 
 trait UpdateRecLowPriorF {
 
-  import UpdateRec.Aux
+  import UpdateRecF.Aux
 
-  implicit def updateNext[F[_], K, K1, A, R <: Record, x, O <: Record]
-  (implicit next: Aux[K, R, x, O]): Aux[K, RCons[K1, A, R], x, RCons[K1, A, O]] =
-    new UpdateRec[K, RCons[K1, A, R], x] {
-      type Out = RCons[K1, A, O]
-      def apply(x: x, rec: RCons[K1, A, R]): Out = field[K1](rec.head) :: next(x, rec.tail)
+  final implicit def updateNext[F[_], K, K1, A <: RecordValueF[F], R <: Record, V <: RecordValueF[F]]
+  (implicit next: UpdateRecF[F, K, R, V]): Aux[F, K, RConsF[F, K1, A, R], V, RConsF[F, K1, A, next.Out]] =
+    new UpdateRecF[F, K, RConsF[F, K1, A, R], V] {
+      type Out = RConsF[F, K1, A, next.Out]
+      def apply(x: V, rec: RConsF[F, K1, A, R]): Out = field[F, K1, A](rec.head) :: next(x, rec.tail)
     }
 }
 
-object UpdateRecF extends UpdateRecLowPrior {
-  type Aux[K, R <: Record, i, O <: Record] = UpdateRec[K, R, i] {type Out = O}
-  implicit def updateNil[K, x]: Aux[K, RNil, x, RCons[K, x, RNil]] = new UpdateRec[K, RNil, x] {
-    type Out = RCons[K, x, RNil]
-    def apply(x: x, rec: RNil) = RCons(x, RNil)
+object UpdateRecF extends UpdateRecLowPriorF {
+  type Aux[F[_], K, R <: Record, i <: RecordValueF[F], O <: RecordF[F]] = UpdateRecF[F, K, R, i] {type Out = O}
+  implicit def updateNil[F, K, x]: Aux[F, K, RNilF[F], x, RConsF[F, K, x, RNilF[F]]] = new UpdateRecF[F, K, RNilF[F], x] {
+    type Out = RConsF[F, K, x, RNilF[F]]
+    def apply(x: x, rec: RNilF[F]) = RConsF(x, RNilF())
   }
 
-  implicit def updateHead[K, A, x, R <: Record]: Aux[K, RCons[K, A, R], x, RCons[K, x, R]] =
-    new UpdateRec[K, RCons[K, A, R], x] {
-      type Out = RCons[K, x, R]
-      def apply(x: x, rec: RCons[K, A, R]): Out = field[K](x) :: rec.tail
+  implicit def updateHead[F[_], K, A <: RecordValueF[F], x <: RecordValueF[F], R <: Record]: Aux[F, K, RCons[K, A, R], x, RCons[K, x, R]] =
+    new UpdateRecF[F, K, RCons[K, A, R], x] {
+      type Out = RConsF[F,K, x, R]
+      def apply(x: x, rec: RConsF[F, K, A, R]): Out = field[F, K , A](x) :: rec.tail
     }
 }
 
-trait SelectRecF[K, R <: Record] {
+trait SelectRecF[F[_], K, R <: Record] {
   type Out
   def apply(x: R): Out
 }
@@ -105,9 +104,6 @@ object DisplayF {
     (r.head.toString -> (kt.tpe -> vt.tpe)) :: next(r.tail)
   }
 }
-
-
-final case class ValueOf[T](value: T)
 
 
 
