@@ -7,25 +7,38 @@ import meetup.graphs.lib._
 import dsl._
 
 object prog1 {
+  type Name = "name"
+  type Age = "age"
+  type FirstName = "first name"
+  type LastName = "last name"
+  type FullName = "full name"
+  type Lollify = "lollify"
+  type Lol = "lol"
+  type Space = " "
+  type Mid = "mid"
+  type X = "x"
+  type Y = "y"
+  type ConcatSpace = "concatSpace"
+
+  type Sep = "sep"
 
   type Program1[name <: String] = exec[readLine[name] >> putLine[name]]
   type readVar[name <: String] = readLine[name] ->> name
   type putVar[name <: String] =   do_[putLine[name] <<- name]
-
   type Program2[name <: String] = exec[readVar[name] >> putVar[name]]
 
-  implicit val nameVal: ValueOf["name"] = ValueOf("name")
-  implicit val ageVal: ValueOf["age"] = ValueOf("age")
-  implicit val fullNameVal: ValueOf["full name"] = ValueOf("full name")
-  implicit val firstNameVal: ValueOf["first name"] = ValueOf("first name")
-  implicit val lastNameVal: ValueOf["last name"] = ValueOf("last name")
-  implicit val lolVal: ValueOf["lol"] = ValueOf("lol")
-  implicit val spaceVal: ValueOf[" "] = ValueOf(" ")
-  implicit val midVal: ValueOf["mid"] = ValueOf("mid")
-  implicit val concatSpaceVal: ValueOf["concatSpace"] = ValueOf("concatSpace")
-  implicit val lollifyVal: ValueOf["lollify"] = ValueOf("lollify")
-  implicit val xVal: ValueOf["x"] = ValueOf("x")
-  implicit val yVal: ValueOf["y"] = ValueOf("y")
+  implicit val nameVal: ValueOf[Name] = ValueOf("name")
+  implicit val ageVal: ValueOf[Age] = ValueOf("age")
+  implicit val fullNameVal: ValueOf[FullName] = ValueOf("full name")
+  implicit val firstNameVal: ValueOf[FirstName] = ValueOf("first name")
+  implicit val lastNameVal: ValueOf[LastName] = ValueOf("last name")
+  implicit val lolVal: ValueOf[Lol] = ValueOf("lol")
+  implicit val spaceVal: ValueOf[Space] = ValueOf(" ")
+  implicit val midVal: ValueOf[Mid] = ValueOf("mid")
+  implicit val concatSpaceVal: ValueOf[ConcatSpace] = ValueOf("concatSpace")
+  implicit val lollifyVal: ValueOf[Lollify] = ValueOf("lollify")
+  implicit val xVal: ValueOf[X] = ValueOf("x")
+  implicit val yVal: ValueOf[Y] = ValueOf("y")
 
   type Program3[name <: String, age <: String] = exec[
     readVar[name] >>
@@ -37,46 +50,49 @@ object prog1 {
 
 
   type concatWith[x, y, sep] =
-    (const[sep] ->> "sep") >>
-    ((concat <<- (x, "sep")) ->> "mid") >>
-    ((concat <<- ("mid", y)))
+    (Sep := const[sep]) >>
+    ((concat $ (x, Sep)) ->> Mid) >>
+    ((concat $ (Mid, y)))
 
 
   type Program4 = exec[
-      readVar["first name"] >>
-      readVar["last name"] >>
-      (concatWith["first name", "last name", " "] ->> "full name") >>
-      putVar["full name"]
+      readVar[FirstName] >>
+      readVar[LastName] >>
+      (concatWith[FirstName, LastName, Space] ->> FullName) >>
+      putVar[FullName]
   ]
 
 
   type Program5 = exec[
-    defun["lollify", "x", String, (const["lol"] ->> "y") >> (concat <<- ("x", "y"))] >>
-    readVar["age"] >>
-    do_[apply1["lollify", "age"] >> putLine["name"]]
+    defun[Lollify, X, String,
+      (Y := const[Lol]) >>
+      (concat $ (X, Y))] >>
+    readVar[Age] >>
+    do_[(Lollify #@ Age) >>
+        putLine[Name]]
   ]
 
   type Program6 = exec[
-    readVar["first name"] >>
-    readVar["last name"] >>
-    defun2["concatSpace", "x", String,  "y", String,
-     ( const["lol"] ->> "sep") >>
-     ((concat <<- ("x", "sep")) ->> "mid") >>
-     ( concat <<- ("y", "mid"))] >>
-    (apply1["concatSpace", "last name"] ->> "lol")
-//    (apply1["lol", "last name"] ->> "full name")
-  ]
+    readVar[FirstName] >>
+    readVar[LastName] >>
+    defun2[ConcatSpace, X, String,  Y , String,
+     ( Sep := const[Space]) >>
+     ((concat $ (X, Sep)) ->> Mid) >>
+     ( concat $ (Y, Mid))]
+//    (FullName := apply2[ConcatSpace, FirstName,  LastName])
+   ]
 
 
 
   def main(args: Array[String]): Unit = {
-//    runProg[T = Program1["name"]]()
-//    runProg[T = Program2["name"]]()
-//    runProg[T = Program3["name", "age"]]()
 
-
-//    runProg[T = Program4]()
-    runProg[T = Program6]()
-//    implicitly
+    6 match {
+      case 1 => runProg[T = Program1["name"]]()
+      case 2 => runProg[T = Program2["name"]]()
+      case 3 => runProg[T = Program3["name", "name"]]()
+      case 4 => runProg[T = Program4]()
+      case 5 => runProg[T = Program5]()
+      case 6 => runProg[T = Program6]()
+    }
   }
 }

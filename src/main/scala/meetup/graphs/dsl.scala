@@ -15,6 +15,12 @@ trait define[pname, ptype, expr]
 trait call
 
 object dsl {
+  type :=[x, y] = y ->> x
+  type $[x, y] = x <<- y
+  type #@[f, x] = apply1[f, x]
+  type #@@[f, x, y] = apply2[f, x, y]
+
+
   type defun[fname, pname, ptype, expr] = (define[pname, ptype, expr] ->> fname)
   type apply1[fname, pname] = (get[fname], get[pname]) >> call
 
