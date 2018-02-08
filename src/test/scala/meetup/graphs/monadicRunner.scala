@@ -24,10 +24,18 @@ object monadicRunner {
 
 
     type NameDict =  RConsF[Id, Name, ValueF[Id, String], RNilF[Id]]
+    type Wrtr[a] = WriterT[Rdr, UserOutput, a]
+    type Wrt[a] =  WriterT[Id, UserOutput, a]
     InterpretF.interpretMacro[readLine[Name], Id, RNilF[Id]]
 
-    Monadic.putLineProg[Name, Id, Wrtr]
-//    Monadic.varInputProg[putLine[Name], Name, Id, String, NameDict, Unit]
+
+
+//    Monadic.putLineProg[Name, Id, Wrt](implicitly,  EnsureWriter.upgrade[Id, UserOutput], implicitly)
+
+
+    val uuu: Monadic.Ev[putLine[Name], Id, String, Unit] =  Monadic.Ev.instance[putLine[Name], Id, String]
+    implicitly[Monadic.Ev[putLine[Name], Id, String, Unit]]
+//    Monadic.varInputProg[putLine[Name], Name, Id, String, NameDict, Unit]/*(implicitly, implicitly, implicitly)*/
 //    InterpretF.interpretMacro[putLine[Name] <<- Name, Id, NameDict]
 
 //    InterpretF.interpretMacro[Monadic.Aux, Program2[Name], Id, RNilF[Id]]
@@ -41,7 +49,7 @@ object monadicRunner {
       "last name" -> "Nizhnik"
     )
     type Rdr[a] = ReaderT[Id, UserInput, a]
-    type Wrtr[a] = WriterT[Rdr, UserOutput, a]
+
 //    Monadic.varOutputProg[readLine[Name], Id, RNil, Name, String]
 //    implicitly[Monadic[readLine[Name], Id, RNil]]
 //    implicitly[Monadic[putVar[Name], Rdr, RCons[Name, String, RNil]]]

@@ -21,7 +21,7 @@ object InterpretF {
   }
   def apply[T, F[_], I](implicit int: InterpretF[T, F, I]): Aux[T, F, I, int.FOut, int.VOut] = int
 
-  implicit def interpretMacro[T, F[_], I <: RecordF[F]]: InterpretF[T, F, I] = macro InterpretFMacro.materialize[T, F, I]
+  implicit def interpretMacro[T, F[_], I]: InterpretF[T, F, I] = macro InterpretFMacro.materialize[T, F, I]
 }
 
 trait ReadVar[T, F[_], I <: RecordF[F], K]{

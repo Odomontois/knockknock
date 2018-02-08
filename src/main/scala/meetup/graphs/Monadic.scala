@@ -36,24 +36,12 @@ object Monadic {
   }
 
   object Ev {
-    type Aux[x, F[_], I <: RecordF[F],  O, G[_]] = Ev[x, F, I, O] {type FOut[a] = G[a]}
-    implicit def instance[x, F[_], I <: RecordF[F]](implicit int: InterpretF[x, F, I]): Aux[x, F, I, int.VOut, int.FOut] =
+    type Aux[x, F[_], I,  O, G[_]] = Ev[x, F, I, O] {type FOut[a] = G[a]}
+    implicit def instance[x, F[_], I](implicit int: InterpretF[x, F, I]): Aux[x, F, I, int.VOut, int.FOut] =
       new Ev[x, F, I, int.VOut] {
         type FOut[a] = int.FOut[a]
         val value = int.value
       }
-  }
-
-  trait EvVars[x, F[_], IV <: RecordF[F], O]{
-    type FOut[_]
-    type VOut <: RecordF[FOut]
-    def ev: Monadic.Aux[x, F, IV, FOut, O]
-    def transVars(iv: IV): VOut
-  }
-
-  object EvVars{
-    type Aux[x, F[_], IV <: RecordF[F], O, G[_], OV <: RecordF[G]] = EvVars[x, F, IV, O]{type Fout[a] = G[a]; type VOut = OV}
-//    implicit def instance[x, F[_], IV <: RecordF[F], O]
   }
 
   case class interpret[x, F[_], A, G[_], B](trans: F ~> G, exec: A => G[B])(implicit val monad: Monad[G]) extends Monadic[x, F, A] {
@@ -85,10 +73,10 @@ object Monadic {
 //    interpret(trans, (vars: Vars) => monad.map(exec(vars))(out => update(out, vars)))(monad)
 //  }
 
-  implicit def varInputProg[x, name <: String, F[_], In, Vars <: RecordF[F], Out]
+  implicit def varInputProg[x, name <: String, F[_]: Monad, In, Vars <: RecordF[F], Out]
     (implicit select: SelectRecF.Aux[F, name, Vars, ValueF[F, In]],
-     x: Ev[x, F, In, Out],
-     F: Monad[F]): interpret[x <<- name, F, Vars, x.FOut, Out] = {
+     x: Ev[x, F, In, Out])
+    : interpret[x <<- name, F, Vars, x.FOut, Out] = {
     import x.value._
     interpret(trans, (vars: Vars) => monad.flatMap(trans(select.apply(vars).value.runTailRec))(in => exec(in)))(monad)
   }
