@@ -59,8 +59,6 @@ object Term {
 
 
 
-
-
   implicit def doProg[prog, Vars <: Record, O](implicit prog: Eval[prog, Vars, O]): Aux[do_[prog], Vars, Vars] =
     interpret(vars => {prog.value.run(vars); vars})
 

@@ -7,6 +7,21 @@ import meetup.graphs.lib._
 
 object prog {
 
+  type Name = "name"
+  type Age = "age"
+  type FirstName = "first name"
+  type LastName = "last name"
+  type FullName = "full name"
+  type Space = " "
+  type Lollify = "lollify"
+  type X = "x"
+  type Y = "y"
+  type Lol = " lol"
+  type Word = "word"
+  type Result = "result"
+  type Sep = "sep"
+  type Mid = "mid"
+
   type readVar[name <: String] =  name := readLine[name]
   type putVar[name <: String] =   do_[putLine[name] $ name]
 
@@ -23,8 +38,7 @@ object prog {
       putVar[age] >>
       putVar[name]
 
-  type Sep = "sep"
-  type Mid = "mid"
+
 
 
   type concatWith[x, y, sep] =
@@ -32,26 +46,12 @@ object prog {
       (Mid := (concat $ (x, Sep))) >>
       ((concat $ (Mid, y)))
 
-  type Name = "name"
-  type Age = "age"
-  type FirstName = "first name"
-  type LastName = "last name"
-  type FullName = "full name"
-  type Space = " "
-
 
   type Program4 =
       readVar[FirstName] >>
       readVar[LastName] >>
       (FullName := concatWith[FirstName, LastName, Space]) >>
       putVar[FullName]
-
-  type Lollify = "lollify"
-  type X = "x"
-  type Y = "y"
-  type Lol = " lol"
-  type Word = "word"
-  type Result = "result"
 
   type Program5 =
     defun[Lollify, X, String,

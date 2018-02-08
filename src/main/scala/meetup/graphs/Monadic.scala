@@ -12,6 +12,7 @@ import cats.syntax.functor._
 import cats.syntax.flatMap._
 import cats.syntax.applicative._
 import cats.instances.vector._
+import meetup.graphs.lib.concat
 
 trait Monadic[x, F[_], I] {
   type FOut[_]
@@ -81,6 +82,14 @@ object Monadic {
     interpret(trans, (vars: Vars) => exec(select.apply(vars)))(monad)
   }
 
+  implicit def varInput2Prog[x, name1 <: String, name2 <: String, F[_], In1, In2, Vars <: Record, Out]
+    (implicit select1: SelectRec.Aux[name1, Vars, In1],
+              select2: SelectRec.Aux[name2, Vars, In2],
+     x: Ev[x, F, (In1, In2), Out]): interpret[x <<- (name1, name2), F, Vars, x.FOut, Out] = {
+    import x.value._
+    interpret(trans, (vars: Vars) => exec((select1(vars), select2(vars))))(monad)
+  }
+
   implicit def doProg[prog, Vars <: Record, F[_]](implicit prog: EvalU[prog, F, Vars]):
     interpret[do_[prog], F, Vars, prog.FOut, Vars] = {
     import prog.value._
@@ -89,6 +98,9 @@ object Monadic {
 
   implicit def constProg[value <: String, F[_], Vars](implicit valueOf: Witness.Aux[value], monad: Monad[F]): interpret[const[value], F, Vars, F, String] =
     interpret(FunctionK.id, _ => monad.pure(valueOf.value))
+
+  implicit def concatProg[F[_]: Monad]: interpret[concat, F, (String, String), F, String] =
+    interpret(FunctionK.id, {case (s1, s2) => (s1 + s2).pure[F]})
 
 //  implicit def defineProg[pname, ptyp, expr, F[_], Vars <: Record, EVars <: Record, Out]
 //  (implicit update: UpdateRec.Aux[pname, Vars, ptyp, EVars],
