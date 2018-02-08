@@ -18,7 +18,6 @@ trait Monadic[x, F[_], I] {
   type VOut
 
   def int: Monadic.interpret[x, F, I, FOut, VOut]
-  def run(fi: F[I]): FOut[VOut] = trans(fi).flatMap(exec)
   def trans: F ~> FOut
   def exec: I => FOut[VOut]
   implicit def monad: Monad[FOut]
@@ -27,8 +26,8 @@ trait Monadic[x, F[_], I] {
 
 object Monadic {
   type Aux[x, F[_], I, G[_], O] = Monadic[x, F, I] {type VOut = O; type FOut[a] = G[a]}
-  type Eval[x, F[_], I, G[_], O] = InterpretF.Aux[Aux, x, F, I, G, O]
-  type EvalU[x, F[_], I] = InterpretF[Aux, x, F, I]
+  type Eval[x, F[_], I <: RecordF[F], G[_], O] = InterpretF.Aux[x, F, I, G, O]
+  type EvalU[x, F[_], I <: RecordF[F]] = InterpretF[x, F, I]
 
 
   trait Ev[x, F[_], I, O] {
@@ -37,8 +36,8 @@ object Monadic {
   }
 
   object Ev {
-    type Aux[x, F[_], I,  O, G[_]] = Ev[x, F, I, O] {type FOut[a] = G[a]}
-    implicit def instance[x, F[_], I](implicit int: InterpretF[Monadic.Aux, x, F, I]): Aux[x, F, I, int.VOut, int.FOut] =
+    type Aux[x, F[_], I <: RecordF[F],  O, G[_]] = Ev[x, F, I, O] {type FOut[a] = G[a]}
+    implicit def instance[x, F[_], I <: RecordF[F]](implicit int: InterpretF[x, F, I]): Aux[x, F, I, int.VOut, int.FOut] =
       new Ev[x, F, I, int.VOut] {
         type FOut[a] = int.FOut[a]
         val value = int.value
@@ -68,12 +67,8 @@ object Monadic {
 
   type UserInput = Map[String, String]
 
-  implicit def readLineProg[name <: String, F[_], Vars <: Record, G[_]]
+  implicit def readLineProg[name <: String, F[_], Vars <: RecordF[F], G[_]]
     (implicit name: Witness.Aux[name], ensure: EnsureReader[F, UserInput, G], G: Monad[G]): Aux[readLine[name], F, Vars, G, String] =
-    interpret[readLine[name], F, Vars, G, String](ensure.trans, _ => ensure.reader.ask.map(_ (name.value)))
-
-  implicit def readLineProgF[name <: String, F[_], Vars <: RecordF[F], G[_]]
-  (implicit name: Witness.Aux[name], ensure: EnsureReader[F, UserInput, G], G: Monad[G]): Aux[readLine[name], F, Vars, G, String] =
     interpret[readLine[name], F, Vars, G, String](ensure.trans, _ => ensure.reader.ask.map(_ (name.value)))
 
 
@@ -83,21 +78,22 @@ object Monadic {
     interpret(ensure.trans: F ~> G, s => ensure.writer.tell(Vector((name.value, s))))
 
 
-  implicit def varOutputProg[x, F[_], Vars <: Record, name <: String, Out]
-    (implicit x: Ev[x, F, Vars, Out],
-     update: UpdateRec[name, Vars, Out]): interpret[x ->> name, F, Vars, x.FOut, update.Out] = {
+//  implicit def varOutputProg[x, F[_], Vars <: RecordF[F], name <: String, Out]
+//    (implicit x: Ev[x, F, Vars, Out],
+//     update: UpdateRecF[F, name, Vars, Out]): interpret[x ->> name, F, Vars, x.FOut, update.Out] = {
+//    import x.value._
+//    interpret(trans, (vars: Vars) => monad.map(exec(vars))(out => update(out, vars)))(monad)
+//  }
+
+  implicit def varInputProg[x, name <: String, F[_], In, Vars <: RecordF[F], Out]
+    (implicit select: SelectRecF.Aux[F, name, Vars, ValueF[F, In]],
+     x: Ev[x, F, In, Out],
+     F: Monad[F]): interpret[x <<- name, F, Vars, x.FOut, Out] = {
     import x.value._
-    interpret(trans, (vars: Vars) => monad.map(exec(vars))(out => update(out, vars)))(monad)
+    interpret(trans, (vars: Vars) => monad.flatMap(trans(select.apply(vars).value.runTailRec))(in => exec(in)))(monad)
   }
 
-  implicit def varInputProg[x, name <: String, F[_], In, Vars <: Record, Out]
-    (implicit select: SelectRec.Aux[name, Vars, In],
-     x: Ev[x, F, In, Out]): interpret[x <<- name, F, Vars, x.FOut, Out] = {
-    import x.value._
-    interpret(trans, (vars: Vars) => exec(select.apply(vars)))(monad)
-  }
-
-  implicit def doProg[prog, Vars <: Record, F[_]](implicit prog: EvalU[prog, F, Vars]):
+  implicit def doProg[prog, F[_], Vars <: RecordF[F]](implicit prog: EvalU[prog, F, Vars]):
     interpret[do_[prog], F, Vars, prog.FOut, Vars] = {
     import prog.value._
     interpret(trans, (vars: Vars) => monad.as(exec(vars), vars))(monad)
@@ -120,31 +116,31 @@ object Monadic {
 
     import scala.reflect.runtime.universe._
 
-    def runProg[T]()(implicit prog: EvalU[T, Id, RNil]): Unit = runProgI[T, Id, RNil](RNil)
-    def runProgI[T, F[_], I](x: F[I])(implicit prog: EvalU[T, F, I]): Unit = prog.value.run(x)
-    def withTypeTag[T](implicit prog: EvalU[T, Id, RNil]) = new RunProgTPA[T, prog.FOut, prog.VOut](prog)
+    def runProg[T]()(implicit prog: EvalU[T, Id, RNilF[Id]]): Unit = runProgI[T, Id, RNilF[Id]](RNilF())
+    def runProgI[T, F[_], I <: RecordF[F]](x: I)(implicit prog: EvalU[T, F, I]): Unit = prog.value.exec(x)
+    def withTypeTag[T](implicit prog: EvalU[T, Id, RNilF[Id]]) = new RunProgTPA[T, prog.FOut, prog.VOut](prog)
     class ??
 
-    class RunProgTPA[T, G[_], O](prog: Eval[T, Id, RNil, G, O]) {
+    class RunProgTPA[T, G[_], O](prog: Eval[T, Id, RNilF[Id], G, O]) {
       def run(implicit tt: TypeTag[O], tf: TypeTag[G[??]]): G[O] = {
         println(s"output tag: ${tt.tpe}")
         println(s"functor tag: ${tf.tpe}")
-        prog.value.run(RNil)
+        prog.value.exec(RNilF())
       }
     }
 
-    def withDisplayOut[T](implicit prog: EvalU[T, Id, RNil]) = new DisplayOuyPA[T, prog.FOut, prog.VOut](prog)
+    def withDisplayOut[T](implicit prog: EvalU[T, Id, RNilF[Id]]) = new DisplayOuyPA[T, prog.FOut, prog.VOut](prog)
 
-    class DisplayOuyPA[T, G[_], O](prog: Eval[T, Id, RNil, G, O]) {
+    class DisplayOuyPA[T, G[_], O](prog: Eval[T, Id, RNilF[Id], G, O]) {
       def run[D](implicit dd: Display[O]): G[String] = {
         import prog.value.monad
 
-        prog.value.run(RNil).map(x => dd(x).iterator.map { case (v, (kt, vt)) => s"$kt -> $v : $vt" }.mkString("\n"))
+        prog.value.exec(RNilF()).map(x => dd(x).iterator.map { case (v, (kt, vt)) => s"$kt -> $v : $vt" }.mkString("\n"))
       }
     }
   }
 
-  implicit object interpreter extends InterpreterF[Aux] {
+  implicit object interpreter{
     def init[x, F[_], A] = new InitPA[x, F, A]
     class InitPA[x, F[_], A] {
       def apply()(implicit term: Monadic[x, F, A]): interpret[Unit, F, A, term.FOut, term.VOut] = term.as[Unit].int

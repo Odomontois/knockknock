@@ -1,40 +1,52 @@
 package meetup.graphs
 
+import cats.arrow.FunctionK
+import cats.~>
+import meetup.control.{LiftRecF, RecordF}
+
 import scala.language.experimental.macros
 import scala.reflect.macros.whitebox
 
 
-trait InterpretF[U[_, _[_], _, _[_], _], T, F[_], I] {
+trait InterpretF[T, F[_], I] {
   type FOut[_]
   type VOut
-  val value: U[T, F, I, FOut, VOut]
+  val value: Monadic.Aux[T, F, I, FOut, VOut]
 }
 
 object InterpretF {
-  type Aux[U[_, _[_], _, _[_], _], T, F[_], I, G[_], O] = InterpretF[U, T, F, I] {
+  type Aux[T, F[_], I, G[_], O] = InterpretF[T, F, I] {
     type VOut = O
     type FOut[a] = G[a]
   }
+  def apply[T, F[_], I](implicit int: InterpretF[T, F, I]): Aux[T, F, I, int.FOut, int.VOut] = int
 
-  implicit def interpretMacro[U[_, _[_], _, _[_], _], T, F[_], I](implicit int: InterpreterF[U]): InterpretF[U, T, F, I] = macro InterpretFMacro.materialize[U, T, F, I]
+  implicit def interpretMacro[T, F[_], I <: RecordF[F]]: InterpretF[T, F, I] = macro InterpretFMacro.materialize[T, F, I]
+}
+
+trait ReadVar[T, F[_], I <: RecordF[F], K]{
+  type FOut[a]
+  type ROut <: RecordF[FOut]
+  type VOut
 }
 
 
-object InterpretFMacro {
+class InterpretFMacro(val c: whitebox.Context) {
+  import c.universe._
   type Q[a] = a
-  def materialize[U[_, _[_], _, _[_], _], T, F[_], I](c: whitebox.Context)(int: c.Tree)(
+  def materialize[T, F[_], I](
     implicit tagT: c.WeakTypeTag[T],
     tagI: c.WeakTypeTag[I],
-    tagU: c.WeakTypeTag[U[_, Q, _, Q, _]],
     tagF: c.WeakTypeTag[F[_]]): c.Tree = {
-    import c.universe._
+
 
     val ConsTpe = typeOf[>>[_, _]].typeConstructor
 
     val T = weakTypeOf[T]
     val I = weakTypeOf[I]
-    val U = weakTypeOf[U[_, Q, _, Q, _]].typeConstructor
+    val MonadicSym = weakTypeOf[Monadic[_, Q, _]].typeConstructor.typeSymbol.companion
     val F = weakTypeOf[F[_]].typeConstructor
+    val FK = weakTypeOf[FunctionK[Q, Q]].typeConstructor
 
 
     def unconsTpe(t: Type): List[Type] = t baseType ConsTpe.typeSymbol match {
@@ -42,9 +54,7 @@ object InterpretFMacro {
       case _ => List(t)
     }
 
-
     val Int = c.freshName[TermName]("interpreter")
-    val IntT = appliedType(weakTypeOf[InterpreterF[U]].typeConstructor, U)
 
 
     val names = Stream.from(0).map(i => c.freshName[TermName](s"interpret$i"))
@@ -58,22 +68,19 @@ object InterpretFMacro {
     val last = names(vals.length - 1)
 
     q"""{
-       val $Int = $int
+       val $Int = $MonadicSym.interpreter
 
        ..$vals
 
        val $myInstance = $last.as[$T]
 
-       new InterpretF[$U, $T, $F, $I]{
+
+       new InterpretF[$T, $F, $I]{
          type FOut[x] = $myInstance.FOut[x]
          type VOut = $myInstance.VOut
          val value = $myInstance
        }
       }"""
   }
-}
-
-trait InterpreterF[U[_, _[_], _, _[_], _]] {
-  def init[x, F[_], I]: Any
 }
 
